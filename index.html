@@ -17,7 +17,7 @@ main{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px 24px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
 .card b{display:block;font-size:22px}.card span{color:var(--muted);font-size:12px}
-.card.p50 b{color:#e3b341}.card.p85 b{color:#d2a8ff}.card.p90 b{color:#ff7b72}
+.card.p50 b{color:#e3b341}.card.p85 b{color:#d2a8ff}.card.p95 b{color:#ff7b72}
 label{display:block;margin:8px 0 3px;color:var(--muted);font-size:12px}
 input,select,button{background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
 button{cursor:pointer;background:#21262d;width:auto}button:hover{background:#30363d}
@@ -47,7 +47,7 @@ td button{padding:1px 7px}
 <body>
 <header>
   <h1>Lead Times 2024–25 – scatterplot</h1>
-  <p>Data ukończenia vs czas realizacji (dni), kolor = deklarowany rozmiar. Linie: percentyle 50 / 85 / 90.</p>
+  <p>Data ukończenia vs czas realizacji (dni), kolor = deklarowany rozmiar. Linie: percentyle 50 / 85 / 95.</p>
 </header>
 <main>
 <section>
@@ -59,7 +59,7 @@ td button{padding:1px 7px}
       <label><input type="checkbox" class="sz" value="L" checked><span class="dot" style="background:#f85149"></span>L</label>
       <span><span class="line" style="border-color:#e3b341"></span> P50</span>
       <span><span class="line" style="border-color:#d2a8ff"></span> P85</span>
-      <span><span class="line" style="border-color:#ff7b72"></span> P90</span>
+      <span><span class="line" style="border-color:#ff7b72"></span> P95</span>
     </div>
     <svg id="chart" viewBox="0 0 900 460"></svg>
     <p class="hint">Kliknij punkt, aby go zaznaczyć i usunąć. Percentyle liczone na widocznych punktach (interpolacja liniowa, jak PERCENTYLE.INC).</p>
@@ -117,7 +117,7 @@ const ORIGINAL = [
 
 const KEY="leadtimes-dashboard-v1";
 const COLORS={S:"#3fb950",M:"#58a6ff",L:"#f85149"};
-const PCT=[[50,"#e3b341"],[85,"#d2a8ff"],[90,"#ff7b72"]];
+const PCT=[[50,"#e3b341"],[85,"#d2a8ff"],[95,"#ff7b72"]];
 const $=id=>document.getElementById(id);
 const MONTHS=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
 
@@ -148,7 +148,7 @@ function render(){
     `<div class="card"><b>${v.length}</b><span>punktów</span></div>`+
     PCT.map(([p],i)=>`<div class="card p${p}"><b>${pv[i]==null?"–":Math.round(pv[i])}</b><span>P${p} (dni)</span></div>`).join("");
   $("forecast").textContent=sc.length?
-    `Prognoza (${state.scope==="all"?"wszystkie":"rozmiar "+state.scope}, n=${sc.length}): 50% zadań w ≤${Math.round(pv[0])} dni, 85% w ≤${Math.round(pv[1])} dni, 90% w ≤${Math.round(pv[2])} dni.`:"Brak danych do prognozy.";
+    `Prognoza (${state.scope==="all"?"wszystkie":"rozmiar "+state.scope}, n=${sc.length}): 50% zadań w ≤${Math.round(pv[0])} dni, 85% w ≤${Math.round(pv[1])} dni, 95% w ≤${Math.round(pv[2])} dni.`:"Brak danych do prognozy.";
 
   const W=900,H=460,m={l:52,r:60,t:14,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
   const ds=v.map(d=>t(d.date));
