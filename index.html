@@ -17,7 +17,7 @@ main{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px 24px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
 .card b{display:block;font-size:22px}.card span{color:var(--muted);font-size:12px}
-.card.p50 b{color:#e3b341}.card.p85 b{color:#d2a8ff}.card.p90 b{color:#ff7b72}
+.card.p50 b{color:#e3b341}.card.p85 b{color:#d2a8ff}.card.p95 b{color:#ff7b72}
 label{display:block;margin:8px 0 3px;color:var(--muted);font-size:12px}
 input,select,button{background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
 button{cursor:pointer;background:#21262d;width:auto}button:hover{background:#30363d}
@@ -42,13 +42,36 @@ th{color:var(--muted);position:sticky;top:0;background:var(--panel)}
 td button{padding:1px 7px}
 .hint{color:var(--muted);font-size:12px;margin:6px 0 0}
 .sel-box{border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:10px;display:none}
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tabs button{width:auto;flex:1}
+.tabs button.active{background:#238636;border-color:#2ea043}
+.calc-result{border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:10px;display:none}
+.calc-result .big{font-size:20px;font-weight:600}
+.calc-result .p50{color:#e3b341}.calc-result .p85{color:#d2a8ff}.calc-result .p95{color:#ff7b72}
+.page-tabs{display:flex;gap:8px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--panel)}
+.page-tabs button{width:auto;background:transparent;border:none;border-bottom:3px solid transparent;border-radius:0;padding:12px 10px;color:var(--muted);font-weight:600}
+.page-tabs button.active{color:var(--text);border-bottom-color:#2ea043}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
+.xmr-stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px}
+.xmr-stats .card b{font-size:18px}
+.rule{display:flex;gap:8px;align-items:flex-start;margin:0 0 8px;font-size:12px}
+.rule svg{flex:none;width:14px;height:18px}
+.sig-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sig-list span{display:inline-flex;align-items:center;gap:3px}
+.sig-list svg{width:12px;height:15px}
 </style>
 </head>
 <body>
 <header>
   <h1>Lead Times 2024–25 – scatterplot</h1>
-  <p>Data ukończenia vs czas realizacji (dni), kolor = deklarowany rozmiar. Linie: percentyle 50 / 85 / 90.</p>
+  <p>Data ukończenia vs czas realizacji (dni), kolor = deklarowany rozmiar. Linie: percentyle 50 / 85 / 95.</p>
 </header>
+<nav class="page-tabs">
+  <button id="pageTabScatter" class="active">Scatterplot – Lead Time</button>
+  <button id="pageTabXmr">XMR – Przepustowość tygodniowa</button>
+</nav>
+<div id="tab-scatter" class="tabpanel active">
 <main>
 <section>
   <div class="cards" id="cards"></div>
@@ -59,10 +82,19 @@ td button{padding:1px 7px}
       <label><input type="checkbox" class="sz" value="L" checked><span class="dot" style="background:#f85149"></span>L</label>
       <span><span class="line" style="border-color:#e3b341"></span> P50</span>
       <span><span class="line" style="border-color:#d2a8ff"></span> P85</span>
-      <span><span class="line" style="border-color:#ff7b72"></span> P90</span>
+      <span><span class="line" style="border-color:#ff7b72"></span> P95</span>
     </div>
     <svg id="chart" viewBox="0 0 900 460"></svg>
     <p class="hint">Kliknij punkt, aby go zaznaczyć i usunąć. Percentyle liczone na widocznych punktach (interpolacja liniowa, jak PERCENTYLE.INC).</p>
+  </div>
+  <div class="panel">
+    <h2>Przepustowość</h2>
+    <div class="tabs">
+      <button id="thrWeek" class="active">Tygodniowa</button>
+      <button id="thrMonth">Miesięczna</button>
+    </div>
+    <svg id="throughput" viewBox="0 0 900 260"></svg>
+    <p class="hint" id="throughputHint"></p>
   </div>
   <div class="panel">
     <h2>Dane (<span id="count"></span>)</h2>
@@ -95,6 +127,30 @@ td button{padding:1px 7px}
     <p class="hint" id="forecast"></p>
   </div>
   <div class="panel">
+    <h2>Kalkulator prognoz</h2>
+    <p class="hint">Symulacja Monte Carlo (5000 prób): dla każdego zadania losowany jest czas z historii danego rozmiaru (bootstrap), wyniki sumowane jako praca sekwencyjna.</p>
+    <label>Liczba zadań S</label><input type="number" id="calcS" min="0" step="1" value="0">
+    <label>Liczba zadań M</label><input type="number" id="calcM" min="0" step="1" value="0">
+    <label>Liczba zadań L</label><input type="number" id="calcL" min="0" step="1" value="0">
+    <label>Okres danych historycznych</label>
+    <select id="calcPeriod">
+      <option value="all">Cały zakres</option>
+      <option value="30">Ostatnie 30 dni</option>
+      <option value="90">Ostatnie 90 dni</option>
+      <option value="180">Ostatnie 180 dni</option>
+      <option value="365">Ostatni rok</option>
+      <option value="custom">Zakres niestandardowy</option>
+    </select>
+    <div id="calcCustomRange" style="display:none">
+      <div class="row">
+        <div><label>Od</label><input type="date" id="calcFrom"></div>
+        <div><label>Do</label><input type="date" id="calcTo"></div>
+      </div>
+    </div>
+    <p><button class="primary" id="calcBtn">Oblicz prognozę</button></p>
+    <div class="calc-result" id="calcResult"></div>
+  </div>
+  <div class="panel">
     <h2>Dane</h2>
     <button id="exportBtn">Eksport CSV</button>
     <button id="reset" class="danger">Przywróć oryginał</button>
@@ -102,6 +158,49 @@ td button{padding:1px 7px}
   </div>
 </aside>
 </main>
+</div>
+<div id="tab-xmr" class="tabpanel">
+<main>
+<section>
+  <div class="xmr-stats" id="xmrStats"></div>
+  <div class="panel">
+    <h2>Wykres X (indywidualne wartości) – przepustowość tygodniowa</h2>
+    <svg id="xmrX" viewBox="0 0 900 340"></svg>
+    <p class="hint">Linia środkowa = średnia tygodniowej przepustowości. Linie kontrolne (UNPL/LNPL): X̄ ± 2,66 × średni Moving Range (mR̄). Strefa między średnią a UNPL (i analogicznie LNPL) jest podzielona na 3 równe pasma: C (0–1σ), B (1–2σ), A (2–3σ). Żarówki = wykryte sygnały.</p>
+  </div>
+  <div class="panel">
+    <h2>Wykres mR (ruchomy rozstęp)</h2>
+    <svg id="xmrMR" viewBox="0 0 900 270"></svg>
+    <p class="hint">Linia środkowa = mR̄. Linie kontrolne: mR̄ ± 3,27 × mR̄ (dolna granica techniczna ograniczona do 0, bo mR nie może być ujemny).</p>
+  </div>
+  <div class="panel">
+    <h2>Dane tygodniowe (<span id="xmrCount"></span>)</h2>
+    <div class="table-wrap"><table><thead><tr><th>Tydzień od</th><th>Przepustowość</th><th>Moving Range</th><th>Sygnał</th></tr></thead><tbody id="xmrRows"></tbody></table></div>
+  </div>
+</section>
+<aside>
+  <div class="panel">
+    <h2>O wykresie XMR</h2>
+    <p class="hint">Dane z pliku <b>Throughput Daily.xlsx</b> (dzienna przepustowość) zagregowane sumą do tygodni kalendarzowych (poniedziałek–niedziela).</p>
+    <p class="hint">X̄ (centralna) = średnia z wartości tygodniowych.</p>
+    <p class="hint">mR̄ (centralna mR) = średnia z bezwzględnych różnic między kolejnymi tygodniami.</p>
+    <p class="hint">UCL(X) = X̄ + 2,66 × mR̄, LCL(X) = X̄ − 2,66 × mR̄.</p>
+    <p class="hint">UCL(mR) = mR̄ + 3,27 × mR̄, LCL(mR) = mR̄ − 3,27 × mR̄ (ucięta do 0).</p>
+    <p class="hint">Punkty poza granicami kontrolnymi oznaczają sygnał specjalnej przyczyny zmienności (nie szum procesu).</p>
+    <p class="hint">Szerokość pasma σ = (UNPL − X̄) / 3 = 2,66 × mR̄ / 3. Pasma: C (X̄ → ±1σ), B (±1σ → ±2σ), A (±2σ → NPL).</p>
+  </div>
+  <div class="panel">
+    <h2>Reguły sygnałów (wykres X)</h2>
+    <div id="xmrRules"></div>
+    <p class="hint">Reguły 2 i 3 liczone po tej samej stronie średniej: „poza linią pasma” = powyżej +2σ / poniżej −2σ (reguła 2, strefa A) oraz powyżej +1σ / poniżej −1σ (reguła 3, strefy A i B). Żarówka pojawia się na punkcie kończącym wzorzec. Reguła 1 jest sprawdzana także na wykresie mR.</p>
+  </div>
+  <div class="panel">
+    <h2>Eksport</h2>
+    <button id="xmrExport">Eksport CSV (tygodnie)</button>
+  </div>
+</aside>
+</main>
+</div>
 <div id="tip"></div>
 <script>
 const ORIGINAL = [
@@ -115,9 +214,13 @@ const ORIGINAL = [
 ["2025-12-10","S",44]
 ].map(([date,size,lt],i)=>({id:i+1,date,size,lt}));
 
+const THROUGHPUT_DAILY = [
+["2025-01-07",0],["2025-01-08",2],["2025-01-09",10],["2025-01-10",3],["2025-01-11",0],["2025-01-12",0],["2025-01-13",2],["2025-01-14",3],["2025-01-15",7],["2025-01-16",0],["2025-01-17",0],["2025-01-18",0],["2025-01-19",0],["2025-01-20",5],["2025-01-21",2],["2025-01-22",0],["2025-01-23",0],["2025-01-24",0],["2025-01-25",0],["2025-01-26",0],["2025-01-27",1],["2025-01-28",1],["2025-01-29",0],["2025-01-30",5],["2025-01-31",4],["2025-02-01",0],["2025-02-02",0],["2025-02-03",7],["2025-02-04",0],["2025-02-05",2],["2025-02-06",2],["2025-02-07",12],["2025-02-08",0],["2025-02-09",0],["2025-02-10",1],["2025-02-11",0],["2025-02-12",0],["2025-02-13",2],["2025-02-14",12],["2025-02-15",0],["2025-02-16",0],["2025-02-17",1],["2025-02-18",0],["2025-02-19",0],["2025-02-20",3],["2025-02-21",11],["2025-02-22",0],["2025-02-23",0],["2025-02-24",6],["2025-02-25",0],["2025-02-26",0],["2025-02-27",6],["2025-02-28",7],["2025-03-01",0],["2025-03-02",0],["2025-03-03",2],["2025-03-04",0],["2025-03-05",0],["2025-03-06",3],["2025-03-07",5],["2025-03-08",0],["2025-03-09",0],["2025-03-10",1],["2025-03-11",0],["2025-03-12",0],["2025-03-13",9],["2025-03-14",7],["2025-03-15",0],["2025-03-16",0],["2025-03-17",3],["2025-03-18",0],["2025-03-19",0],["2025-03-20",4],["2025-03-21",10],["2025-03-22",0],["2025-03-23",0],["2025-03-24",1],["2025-03-25",0],["2025-03-26",0],["2025-03-27",5],["2025-03-28",1],["2025-03-29",0],["2025-03-30",0],["2025-03-31",2],["2025-04-01",0],["2025-04-02",0],["2025-04-03",2],["2025-04-04",11],["2025-04-05",0],["2025-04-06",0],["2025-04-07",1],["2025-04-08",0],["2025-04-09",0],["2025-04-10",5],["2025-04-11",2],["2025-04-12",0],["2025-04-13",0],["2025-04-14",1],["2025-04-15",0],["2025-04-16",0],["2025-04-17",4],["2025-04-18",7],["2025-04-19",0]
+];
+
 const KEY="leadtimes-dashboard-v1";
 const COLORS={S:"#3fb950",M:"#58a6ff",L:"#f85149"};
-const PCT=[[50,"#e3b341"],[85,"#d2a8ff"],[90,"#ff7b72"]];
+const PCT=[[50,"#e3b341"],[85,"#d2a8ff"],[95,"#ff7b72"]];
 const $=id=>document.getElementById(id);
 const MONTHS=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
 
@@ -148,7 +251,7 @@ function render(){
     `<div class="card"><b>${v.length}</b><span>punktów</span></div>`+
     PCT.map(([p],i)=>`<div class="card p${p}"><b>${pv[i]==null?"–":Math.round(pv[i])}</b><span>P${p} (dni)</span></div>`).join("");
   $("forecast").textContent=sc.length?
-    `Prognoza (${state.scope==="all"?"wszystkie":"rozmiar "+state.scope}, n=${sc.length}): 50% zadań w ≤${Math.round(pv[0])} dni, 85% w ≤${Math.round(pv[1])} dni, 90% w ≤${Math.round(pv[2])} dni.`:"Brak danych do prognozy.";
+    `Prognoza (${state.scope==="all"?"wszystkie":"rozmiar "+state.scope}, n=${sc.length}): 50% zadań w ≤${Math.round(pv[0])} dni, 85% w ≤${Math.round(pv[1])} dni, 95% w ≤${Math.round(pv[2])} dni.`:"Brak danych do prognozy.";
 
   const W=900,H=460,m={l:52,r:60,t:14,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
   const ds=v.map(d=>t(d.date));
@@ -179,8 +282,97 @@ function render(){
   $("selbox").style.display=sel?"block":"none";$("selhint").style.display=sel?"none":"block";
   if(sel)$("selbox").innerHTML=`<div><b>Data ukończenia:</b> ${fmt(sel.date)}</div><div><b>Rozmiar:</b> <span style="color:${COLORS[sel.size]}">${sel.size}</span></div><div><b>Czas realizacji:</b> ${sel.lt} dni</div><p><button class="danger" data-del="${sel.id}">Usuń punkt</button></p>`;
   $("cutDate").value=state.cut;$("scope").value=state.scope;
+  renderThroughput();
 }
 function del(id){state.data=state.data.filter(d=>d.id!==id);if(selected===id)selected=null;save();render()}
+
+let throughputMode="week";
+function isoWeekStart(ms){
+  const d=new Date(ms);const day=(d.getUTCDay()+6)%7;
+  return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-day);
+}
+function periodKey(dateStr,mode){
+  const ms=t(dateStr);
+  if(mode==="month"){const d=new Date(ms);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)}
+  return isoWeekStart(ms);
+}
+function periodLabel(ms,mode){
+  const d=new Date(ms);
+  if(mode==="month")return `${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
+  return `${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+}
+function renderThroughput(){
+  const v=visible(),mode=throughputMode;
+  const groups=new Map();
+  v.forEach(d=>{
+    const k=periodKey(d.date,mode);
+    if(!groups.has(k))groups.set(k,{S:0,M:0,L:0});
+    groups.get(k)[d.size]++;
+  });
+  const keys=[...groups.keys()].sort((a,b)=>a-b);
+  const W=900,H=260,m={l:40,r:14,t:14,b:36},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  if(!keys.length){$("throughput").innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">Brak danych w wybranym zakresie</text>`;$("throughputHint").textContent="";return}
+  const totals=keys.map(k=>{const g=groups.get(k);return g.S+g.M+g.L});
+  const ymax=Math.max(1,...totals)*1.15;
+  const bw=iw/keys.length*0.7,gap=iw/keys.length;
+  const Y=y=>m.t+ih-y/ymax*ih;
+  let s=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
+  const step=Math.max(1,Math.round(ymax/5));
+  for(let y=0;y<=ymax;y+=step)s+=`<line class="grid" x1="${m.l}" x2="${W-m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${m.l-6}" y="${Y(y)+4}" text-anchor="end">${y}</text>`;
+  const every=keys.length>20?Math.ceil(keys.length/20):1;
+  keys.forEach((k,i)=>{
+    const g=groups.get(k),x=m.l+i*gap+(gap-bw)/2;
+    let yOff=0;
+    ["S","M","L"].forEach(sz=>{
+      const val=g[sz];if(!val)return;
+      const h=val/ymax*ih;
+      s+=`<rect x="${x}" y="${Y(yOff+val)}" width="${bw}" height="${h}" fill="${COLORS[sz]}"><title>${periodLabel(k,mode)}: ${sz}=${val}</title></rect>`;
+      yOff+=val;
+    });
+    if(i%every===0)s+=`<text x="${x+bw/2}" y="${H-m.b+16}" text-anchor="middle">${periodLabel(k,mode)}</text>`;
+  });
+  $("throughput").innerHTML=s;
+  const avg=(totals.reduce((a,b)=>a+b,0)/totals.length).toFixed(1);
+  $("throughputHint").textContent=`${keys.length} ${mode==="week"?"tygodni":"miesięcy"} z danymi, średnio ${avg} zadań na okres. Kolory słupków = deklarowany rozmiar.`;
+}
+
+function bootstrapSample(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function calcPeriodData(){
+  const mode=$("calcPeriod").value;
+  if(mode==="all")return state.data;
+  if(mode==="custom"){
+    const from=$("calcFrom").value,to=$("calcTo").value;
+    return state.data.filter(d=>(!from||d.date>=from)&&(!to||d.date<=to));
+  }
+  const days=+mode,cutoff=new Date(Date.now()-days*864e5).toISOString().slice(0,10);
+  return state.data.filter(d=>d.date>=cutoff);
+}
+function runForecast(){
+  const counts={S:+$("calcS").value||0,M:+$("calcM").value||0,L:+$("calcL").value||0};
+  const total=counts.S+counts.M+counts.L;
+  const box=$("calcResult");
+  if(total<=0){box.style.display="block";box.innerHTML=`<p class="hint">Podaj liczbę zadań co najmniej jednego rozmiaru.</p>`;return}
+  const periodData=calcPeriodData();
+  const bySize={S:periodData.filter(d=>d.size==="S").map(d=>d.lt),M:periodData.filter(d=>d.size==="M").map(d=>d.lt),L:periodData.filter(d=>d.size==="L").map(d=>d.lt)};
+  const missing=["S","M","L"].filter(sz=>counts[sz]>0&&bySize[sz].length===0);
+  if(missing.length){box.style.display="block";box.innerHTML=`<p class="hint">Brak danych historycznych dla rozmiaru: ${missing.join(", ")} w wybranym okresie. Wybierz szerszy zakres dat.</p>`;return}
+  const N=5000,totals=[];
+  for(let i=0;i<N;i++){
+    let sum=0;
+    for(const sz of ["S","M","L"])for(let j=0;j<counts[sz];j++)sum+=bootstrapSample(bySize[sz]);
+    totals.push(sum);
+  }
+  const p50=percentile(totals,50),p85=percentile(totals,85),p95=percentile(totals,95);
+  const today=new Date();
+  const dateAt=days=>{const d=new Date(today.getTime()+days*864e5);return fmt(d.toISOString().slice(0,10))};
+  const sampleInfo=["S","M","L"].filter(sz=>counts[sz]>0).map(sz=>`${sz}: n=${bySize[sz].length}`).join(", ");
+  box.style.display="block";
+  box.innerHTML=`<p>Prognoza dla ${total} zadań (S=${counts.S}, M=${counts.M}, L=${counts.L}):</p>
+    <p class="big p50">P50: ${Math.round(p50)} dni <span class="hint">(do ${dateAt(p50)})</span></p>
+    <p class="big p85">P85: ${Math.round(p85)} dni <span class="hint">(do ${dateAt(p85)})</span></p>
+    <p class="big p95">P95: ${Math.round(p95)} dni <span class="hint">(do ${dateAt(p95)})</span></p>
+    <p class="hint">Dane historyczne użyte do próbkowania: ${sampleInfo}.</p>`;
+}
 
 const tip=$("tip");
 $("chart").addEventListener("mousemove",e=>{
@@ -214,8 +406,154 @@ $("exportBtn").onclick=()=>{
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="lead-times.csv";a.click();
 };
 $("reset").onclick=()=>{if(confirm("Przywrócić dane z pliku Excel?")){state={data:structuredClone(ORIGINAL),cut:"",scope:"all"};selected=null;save();render()}};
+$("thrWeek").onclick=()=>{throughputMode="week";$("thrWeek").classList.add("active");$("thrMonth").classList.remove("active");renderThroughput()};
+$("thrMonth").onclick=()=>{throughputMode="month";$("thrMonth").classList.add("active");$("thrWeek").classList.remove("active");renderThroughput()};
+$("calcPeriod").addEventListener("change",e=>{$("calcCustomRange").style.display=e.target.value==="custom"?"block":"none"});
+$("calcBtn").onclick=runForecast;
 $("addDate").value=new Date().toISOString().slice(0,10);
 render();
+
+// ---------- XMR (Przepustowość tygodniowa) ----------
+function buildWeeklyThroughput(){
+  const groups=new Map();
+  THROUGHPUT_DAILY.forEach(([date,val])=>{
+    const k=isoWeekStart(t(date));
+    groups.set(k,(groups.get(k)||0)+val);
+  });
+  return [...groups.entries()].sort((a,b)=>a[0]-b[0]).map(([k,v])=>({weekStart:k,value:v}));
+}
+function computeXMR(weekly){
+  const vals=weekly.map(w=>w.value),n=vals.length;
+  const xbar=vals.reduce((a,b)=>a+b,0)/n;
+  const mr=[null];
+  for(let i=1;i<n;i++)mr.push(Math.abs(vals[i]-vals[i-1]));
+  const mrVals=mr.filter(v=>v!=null);
+  const mrbar=mrVals.reduce((a,b)=>a+b,0)/mrVals.length;
+  return{
+    vals,mr,xbar,mrbar,
+    sigma:2.66*mrbar/3,
+    xUCL:xbar+2.66*mrbar,xLCL:xbar-2.66*mrbar,
+    mrUCL:mrbar+3.27*mrbar,mrLCL:Math.max(0,mrbar-3.27*mrbar)
+  };
+}
+
+const RULES={
+  1:{color:"#f2cc0c",name:"Żółta żarówka",desc:"Pojedynczy punkt poza korytarzem NPL – sygnał o przyczynie możliwej do zidentyfikowania."},
+  2:{color:"#f0883e",name:"Pomarańczowa żarówka",desc:"Dwa z trzech kolejnych punktów poza linią pasma 2σ (po tej samej stronie średniej) – umiarkowany sygnał."},
+  3:{color:"#a371f7",name:"Fioletowa żarówka",desc:"Trzy z pięciu kolejnych punktów poza linią pasma 1σ (po tej samej stronie średniej) – umiarkowany, trwały sygnał."},
+  4:{color:"#f0f6fc",name:"Biała żarówka",desc:"Osiem kolejnych punktów po jednej stronie średniej – sygnał niewielkiej, trwałej zmiany."}
+};
+const bulbShape=c=>`<circle cx="0" cy="-2" r="5" fill="${c}" stroke="#0d1117" stroke-width="1"/><rect x="-2.5" y="2.5" width="5" height="3.5" rx="1" fill="#8b949e" stroke="#0d1117" stroke-width="1"/>`;
+const bulbInline=c=>`<svg viewBox="-7 -9 14 18">${bulbShape(c)}</svg>`;
+
+function detectSignals(vals,xbar,sigma){
+  const ucl=xbar+3*sigma,lcl=xbar-3*sigma;
+  return vals.map((v,i)=>{
+    const found=[];
+    if(v>ucl||v<lcl)found.push(1);
+    for(const side of [1,-1]){
+      const beyond=(k,z)=>side*(vals[k]-xbar)>z*sigma;
+      const count=(from,z)=>{let c=0;for(let k=from;k<=i;k++)if(beyond(k,z))c++;return c};
+      if(i>=2&&beyond(i,2)&&count(i-2,2)>=2&&!found.includes(2))found.push(2);
+      if(i>=4&&beyond(i,1)&&count(i-4,1)>=3&&!found.includes(3))found.push(3);
+    }
+    if(i>=7){
+      const w=vals.slice(i-7,i+1);
+      if(w.every(x=>x>xbar)||w.every(x=>x<xbar))found.push(4);
+    }
+    return found.sort();
+  });
+}
+function lineChart(svgId,points,{centerLabel,center,ucl,lcl,color,fmtX,fmtVal,sigma,signals}){
+  const W=900,H=svgId==="xmrX"?340:270,m={l:52,r:70,t:svgId==="xmrX"?34:24,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const n=points.length;
+  const vals=points.map(p=>p.y).filter(v=>v!=null);
+  const ymin=Math.min(0,lcl,...vals)*1.05,ymax=Math.max(ucl,...vals)*1.08||1;
+  const X=i=>m.l+(n<=1?iw/2:i/(n-1)*iw),Y=y=>m.t+ih-(y-ymin)/(ymax-ymin)*ih;
+  let s="";
+  const step=Math.max(1,Math.round((ymax-ymin)/6));
+  for(let y=Math.ceil(ymin/step)*step;y<=ymax;y+=step)
+    s+=`<line class="grid" x1="${m.l}" x2="${W-m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${m.l-8}" y="${Y(y)+4}" text-anchor="end">${fmtVal?fmtVal(y):y}</text>`;
+  const every=n>24?Math.ceil(n/24):1;
+  points.forEach((p,i)=>{if(i%every===0)s+=`<text x="${X(i)}" y="${H-m.b+16}" text-anchor="middle">${fmtX(p.x)}</text>`});
+  s+=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
+  if(sigma){
+    const zoneFill=["#3fb950","#d29922","#f85149"],zoneName=["C","B","A"];
+    [1,-1].forEach(sd=>[1,2,3].forEach(k=>{
+      const ya=Y(center+sd*(k-1)*sigma),yb=Y(center+sd*k*sigma);
+      s+=`<rect x="${m.l}" y="${Math.min(ya,yb)}" width="${iw}" height="${Math.abs(ya-yb)}" fill="${zoneFill[k-1]}" opacity="${0.05+0.03*k}"/>`;
+      s+=`<text x="${m.l+4}" y="${(ya+yb)/2+4}" style="fill:${zoneFill[k-1]};opacity:.8">${zoneName[k-1]}</text>`;
+    }));
+    [1,2].forEach(k=>[1,-1].forEach(sd=>{
+      const v=center+sd*k*sigma,col=k===1?"#6e7681":"#d29922";
+      s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${col}" stroke-width="1" stroke-dasharray="2 4"/><text x="${W-m.r+4}" y="${Y(v)+4}" style="fill:${col}">${sd>0?"+":"−"}${k}σ: ${v.toFixed(1)}</text>`;
+    }));
+  }
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(center)}" y2="${Y(center)}" stroke="#8b949e" stroke-width="1.4"/><text x="${W-m.r+4}" y="${Y(center)+4}">${centerLabel}: ${center.toFixed(1)}</text>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(ucl)}" y2="${Y(ucl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(ucl)+4}" style="fill:#ff7b72">${sigma?"UNPL":"UCL"}: ${ucl.toFixed(1)}</text>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(lcl)}" y2="${Y(lcl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(lcl)+4}" style="fill:#ff7b72">${sigma?"LNPL":"LCL"}: ${lcl.toFixed(1)}</text>`;
+  let path="";
+  points.forEach((p,i)=>{if(p.y==null)return;path+=(path?"L":"M")+X(i)+","+Y(p.y)+" "});
+  s+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>`;
+  points.forEach((p,i)=>{
+    if(p.y==null)return;
+    const sig=signals&&signals[i]||[];
+    s+=`<circle cx="${X(i)}" cy="${Y(p.y)}" r="5" fill="${sig.length?"#ff7b72":color}" stroke="#0d1117" stroke-width="1.5"><title>${fmtX(p.x)}: ${p.y.toFixed(1)}</title></circle>`;
+    const dir=p.y>=center?-1:1;
+    sig.forEach((r,j)=>{
+      const by=Math.max(10,Math.min(H-m.b-6,Y(p.y)+dir*(16+j*16)));
+      s+=`<g transform="translate(${X(i)},${by})"><title>${RULES[r].name}: ${RULES[r].desc}</title>${bulbShape(RULES[r].color)}</g>`;
+    });
+  });
+  $(svgId).innerHTML=s;
+}
+function signalList(rules){
+  return rules.length?`<div class="sig-list">${rules.map(r=>`<span title="${RULES[r].desc}">${bulbInline(RULES[r].color)}${r}</span>`).join("")}</div>`:"–";
+}
+function renderXMR(){
+  const weekly=buildWeeklyThroughput();
+  const st=computeXMR(weekly);
+  const xSig=detectSignals(st.vals,st.xbar,st.sigma);
+  const mrSig=st.mr.map(v=>v!=null&&(v>st.mrUCL||v<st.mrLCL)?[1]:[]);
+  $("xmrRules").innerHTML=Object.entries(RULES).map(([k,r])=>`<div class="rule">${bulbInline(r.color)}<div><b>${k}. ${r.name}</b><br><span style="color:var(--muted)">${r.desc}</span></div></div>`).join("");
+  const nSig=xSig.filter(a=>a.length).length+mrSig.filter(a=>a.length).length;
+  $("xmrStats").innerHTML=[
+    [weekly.length,"tygodni"],
+    [st.xbar.toFixed(1),"X̄ (śr. tygodniowa)"],
+    [st.mrbar.toFixed(1),"mR̄ (śr. moving range)"],
+    [st.sigma.toFixed(2),"σ (1/3 X̄→NPL)"],
+    [st.xUCL.toFixed(1),"UNPL"],
+    [st.xLCL.toFixed(1),"LNPL"],
+    [st.mrUCL.toFixed(1),"UCL(mR)"],
+    [nSig,"punktów z sygnałem"],
+  ].map(([v,l])=>`<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
+  lineChart("xmrX",weekly.map(w=>({x:w.weekStart,y:w.value})),
+    {centerLabel:"X̄",center:st.xbar,ucl:st.xUCL,lcl:st.xLCL,color:"#58a6ff",fmtX:fmtWeek,sigma:st.sigma,signals:xSig});
+  lineChart("xmrMR",weekly.map((w,i)=>({x:w.weekStart,y:st.mr[i]})),
+    {centerLabel:"mR̄",center:st.mrbar,ucl:st.mrUCL,lcl:st.mrLCL,color:"#d2a8ff",fmtX:fmtWeek,signals:mrSig});
+  $("xmrCount").textContent=weekly.length;
+  $("xmrRows").innerHTML=weekly.map((w,i)=>{
+    const mrv=st.mr[i];
+    const xs=xSig[i],ms=mrSig[i];
+    return `<tr><td>${fmt(new Date(w.weekStart).toISOString().slice(0,10))}</td><td style="${xs.includes(1)?"color:#ff7b72;font-weight:600":""}">${w.value}</td><td style="${ms.length?"color:#ff7b72;font-weight:600":""}">${mrv==null?"–":mrv}</td><td>${signalList(xs)}${ms.length?`<div class="hint">mR poza granicami</div>`:""}</td></tr>`;
+  }).join("");
+}
+function fmtWeek(ms){const d=new Date(ms);return `${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,"0")}`}
+$("xmrExport").onclick=()=>{
+  const weekly=buildWeeklyThroughput(),st=computeXMR(weekly),sig=detectSignals(st.vals,st.xbar,st.sigma);
+  const csv="Tydzień od,Przepustowość,Moving Range,Sygnały (reguły)\n"+weekly.map((w,i)=>`${new Date(w.weekStart).toISOString().slice(0,10)},${w.value},${st.mr[i]==null?"":st.mr[i]},${sig[i].join("+")}`).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="throughput-weekly-xmr.csv";a.click();
+};
+function showTab(tab){
+  const scatter=tab==="scatter";
+  $("tab-scatter").classList.toggle("active",scatter);
+  $("tab-xmr").classList.toggle("active",!scatter);
+  $("pageTabScatter").classList.toggle("active",scatter);
+  $("pageTabXmr").classList.toggle("active",!scatter);
+}
+$("pageTabScatter").onclick=()=>showTab("scatter");
+$("pageTabXmr").onclick=()=>showTab("xmr");
+renderXMR();
 </script>
 </body>
 </html>
