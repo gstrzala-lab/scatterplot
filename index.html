@@ -1,1 +1,221 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lead Times – Scatterplot</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;color-scheme:dark}
+header{padding:16px 24px;border-bottom:1px solid var(--border)}
+h1{margin:0;font-size:20px}header p{margin:4px 0 0;color:var(--muted)}
+main{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px 24px}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px}
+.panel h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.card b{display:block;font-size:22px}.card span{color:var(--muted);font-size:12px}
+.card.p50 b{color:#e3b341}.card.p85 b{color:#d2a8ff}.card.p90 b{color:#ff7b72}
+label{display:block;margin:8px 0 3px;color:var(--muted);font-size:12px}
+input,select,button{background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
+button{cursor:pointer;background:#21262d;width:auto}button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#2ea043}button.primary:hover{background:#2ea043}
+button.danger{color:#ff7b72}
+.row{display:flex;gap:8px;align-items:end}.row>*{flex:1}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px;color:var(--muted)}
+.legend label{display:flex;align-items:center;gap:5px;margin:0;color:var(--text);cursor:pointer}
+.legend input{width:auto}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.line{width:18px;height:0;border-top:2px dashed;display:inline-block}
+svg{width:100%;height:auto;display:block}
+svg text{fill:var(--muted);font-size:11px}
+.grid{stroke:#21262d}.axis{stroke:var(--border)}
+.pt{cursor:pointer;stroke:#0d1117;stroke-width:1.5}.pt:hover{stroke:#fff}
+.pt.sel{stroke:#fff;stroke-width:2.5}
+#tip{position:fixed;pointer-events:none;background:#010409;border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px;display:none;z-index:5}
+.table-wrap{max-height:320px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:left}
+th{color:var(--muted);position:sticky;top:0;background:var(--panel)}
+td button{padding:1px 7px}
+.hint{color:var(--muted);font-size:12px;margin:6px 0 0}
+.sel-box{border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:10px;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Lead Times 2024–25 – scatterplot</h1>
+  <p>Data ukończenia vs czas realizacji (dni), kolor = deklarowany rozmiar. Linie: percentyle 50 / 85 / 90.</p>
+</header>
+<main>
+<section>
+  <div class="cards" id="cards"></div>
+  <div class="panel">
+    <div class="legend">
+      <label><input type="checkbox" class="sz" value="S" checked><span class="dot" style="background:#3fb950"></span>S</label>
+      <label><input type="checkbox" class="sz" value="M" checked><span class="dot" style="background:#58a6ff"></span>M</label>
+      <label><input type="checkbox" class="sz" value="L" checked><span class="dot" style="background:#f85149"></span>L</label>
+      <span><span class="line" style="border-color:#e3b341"></span> P50</span>
+      <span><span class="line" style="border-color:#d2a8ff"></span> P85</span>
+      <span><span class="line" style="border-color:#ff7b72"></span> P90</span>
+    </div>
+    <svg id="chart" viewBox="0 0 900 460"></svg>
+    <p class="hint">Kliknij punkt, aby go zaznaczyć i usunąć. Percentyle liczone na widocznych punktach (interpolacja liniowa, jak PERCENTYLE.INC).</p>
+  </div>
+  <div class="panel">
+    <h2>Dane (<span id="count"></span>)</h2>
+    <div class="table-wrap"><table><thead><tr><th>Data ukończenia</th><th>Rozmiar</th><th>Czas (dni)</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+  </div>
+</section>
+<aside>
+  <div class="panel">
+    <h2>Zaznaczony punkt</h2>
+    <div class="sel-box" id="selbox"></div>
+    <p class="hint" id="selhint">Brak zaznaczenia.</p>
+  </div>
+  <div class="panel">
+    <h2>Dodaj dane</h2>
+    <label>Data ukończenia</label><input type="date" id="addDate">
+    <label>Deklarowany rozmiar</label>
+    <select id="addSize"><option>S</option><option>M</option><option>L</option></select>
+    <label>Czas realizacji (dni)</label><input type="number" id="addLt" min="0" step="1">
+    <p><button class="primary" id="addBtn">Dodaj punkt</button></p>
+  </div>
+  <div class="panel">
+    <h2>Prognoza / zakres</h2>
+    <label>Odetnij dane starsze niż</label>
+    <div class="row"><input type="date" id="cutDate"><button id="cutClear">Wyczyść</button></div>
+    <p class="hint">Filtr widoku; „Usuń trwale” kasuje starsze punkty z danych.</p>
+    <p><button class="danger" id="cutDelete">Usuń trwale starsze</button></p>
+    <label>Percentyle liczone dla</label>
+    <select id="scope"><option value="all">Wszystkich widocznych punktów</option><option value="S">Tylko S</option><option value="M">Tylko M</option><option value="L">Tylko L</option></select>
+    <p><button class="primary" id="refresh">Aktualizuj prognozy</button></p>
+    <p class="hint" id="forecast"></p>
+  </div>
+  <div class="panel">
+    <h2>Dane</h2>
+    <button id="exportBtn">Eksport CSV</button>
+    <button id="reset" class="danger">Przywróć oryginał</button>
+    <p class="hint">Zmiany zapisują się lokalnie w przeglądarce (localStorage).</p>
+  </div>
+</aside>
+</main>
+<div id="tip"></div>
+<script>
+const ORIGINAL = [
+["2024-07-15","S",49],["2024-08-22","S",48],["2024-09-10","S",87],["2024-09-25","M",57],["2024-10-05","M",148],
+["2024-10-14","S",53],["2024-10-28","S",45],["2024-11-18","M",145],["2024-12-04","L",105],["2025-01-08","S",5],
+["2025-01-20","L",163],["2025-02-14","S",43],["2025-02-26","M",415],["2025-03-15","L",123],["2025-04-10","M",103],
+["2025-05-05","L",104],["2025-06-12","L",302],["2025-06-25","L",158],["2025-07-02","L",98],["2025-07-11","S",52],
+["2025-07-18","M",95],["2025-07-29","S",70],["2025-08-03","M",95],["2025-08-14","M",101],["2025-08-21","M",57],
+["2025-08-29","M",57],["2025-09-08","S",53],["2025-09-22","L",137],["2025-10-04","S",73],["2025-10-12","M",60],
+["2025-10-19","S",126],["2025-10-27","M",57],["2025-11-05","L",124],["2025-11-15","M",75],["2025-11-25","M",89],
+["2025-12-10","S",44]
+].map(([date,size,lt],i)=>({id:i+1,date,size,lt}));
 
+const KEY="leadtimes-dashboard-v1";
+const COLORS={S:"#3fb950",M:"#58a6ff",L:"#f85149"};
+const PCT=[[50,"#e3b341"],[85,"#d2a8ff"],[90,"#ff7b72"]];
+const $=id=>document.getElementById(id);
+const MONTHS=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
+
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!state||!Array.isArray(state.data))state={data:structuredClone(ORIGINAL),cut:"",scope:"all"};
+let selected=null;
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}};
+const t=s=>new Date(s+"T00:00:00Z").getTime();
+const fmt=s=>{const d=new Date(t(s));return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`};
+
+function percentile(vals,p){
+  if(!vals.length)return null;
+  const a=[...vals].sort((x,y)=>x-y),r=(a.length-1)*p/100,lo=Math.floor(r),hi=Math.ceil(r);
+  return a[lo]+(a[hi]-a[lo])*(r-lo);
+}
+function visible(){
+  const sizes=[...document.querySelectorAll(".sz:checked")].map(e=>e.value);
+  return state.data.filter(d=>sizes.includes(d.size)&&(!state.cut||d.date>=state.cut))
+    .sort((a,b)=>a.date<b.date?-1:1);
+}
+function scoped(v){return state.scope==="all"?v:v.filter(d=>d.size===state.scope)}
+
+function render(){
+  const v=visible(),sc=scoped(v);
+  const pv=PCT.map(([p])=>percentile(sc.map(d=>d.lt),p));
+  $("cards").innerHTML=
+    `<div class="card"><b>${v.length}</b><span>punktów</span></div>`+
+    PCT.map(([p],i)=>`<div class="card p${p}"><b>${pv[i]==null?"–":Math.round(pv[i])}</b><span>P${p} (dni)</span></div>`).join("");
+  $("forecast").textContent=sc.length?
+    `Prognoza (${state.scope==="all"?"wszystkie":"rozmiar "+state.scope}, n=${sc.length}): 50% zadań w ≤${Math.round(pv[0])} dni, 85% w ≤${Math.round(pv[1])} dni, 90% w ≤${Math.round(pv[2])} dni.`:"Brak danych do prognozy.";
+
+  const W=900,H=460,m={l:52,r:60,t:14,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const ds=v.map(d=>t(d.date));
+  let x0=ds.length?Math.min(...ds):t("2024-07-01"),x1=ds.length?Math.max(...ds):t("2025-12-31");
+  const pad=Math.max((x1-x0)*0.03,864e5*5);x0-=pad;x1+=pad;
+  const ymax=Math.max(10,...v.map(d=>d.lt),...pv.filter(x=>x!=null))*1.08;
+  const X=ms=>m.l+(ms-x0)/(x1-x0)*iw,Y=y=>m.t+ih-y/ymax*ih;
+  let s="";
+  const step=[10,20,25,50,100].find(k=>ymax/k<=9)||100;
+  for(let y=0;y<=ymax;y+=step)s+=`<line class="grid" x1="${m.l}" x2="${W-m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${m.l-8}" y="${Y(y)+4}" text-anchor="end">${y}</text>`;
+  const d0=new Date(x0);let c=Date.UTC(d0.getUTCFullYear(),d0.getUTCMonth()+1,1);
+  const span=(x1-x0)/864e5/30,every=span>14?3:span>7?2:1;let k=0;
+  for(;c<x1;k++){const d=new Date(c);
+    if(k%every===0)s+=`<line class="grid" x1="${X(c)}" x2="${X(c)}" y1="${m.t}" y2="${m.t+ih}"/><text x="${X(c)}" y="${H-m.b+16}" text-anchor="middle">${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}</text>`;
+    c=Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1);}
+  s+=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
+  s+=`<text x="14" y="${m.t+ih/2}" transform="rotate(-90 14 ${m.t+ih/2})" text-anchor="middle">Czas realizacji (dni)</text>`;
+  PCT.forEach(([p,col],i)=>{if(pv[i]==null)return;const y=Y(pv[i]);
+    s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="1.6" stroke-dasharray="6 4"/>`+
+       `<text x="${W-m.r+4}" y="${y+4}" style="fill:${col}">P${p}: ${Math.round(pv[i])}</text>`;});
+  v.forEach(d=>{s+=`<circle class="pt${d.id===selected?" sel":""}" data-id="${d.id}" cx="${X(t(d.date))}" cy="${Y(d.lt)}" r="6" fill="${COLORS[d.size]}"/>`});
+  $("chart").innerHTML=s;
+
+  $("count").textContent=v.length+" / "+state.data.length;
+  $("rows").innerHTML=[...v].reverse().map(d=>`<tr><td>${fmt(d.date)}</td><td style="color:${COLORS[d.size]}">${d.size}</td><td>${d.lt}</td><td><button class="danger" data-del="${d.id}" title="Usuń">✕</button></td></tr>`).join("");
+
+  const sel=state.data.find(d=>d.id===selected);
+  $("selbox").style.display=sel?"block":"none";$("selhint").style.display=sel?"none":"block";
+  if(sel)$("selbox").innerHTML=`<div><b>Data ukończenia:</b> ${fmt(sel.date)}</div><div><b>Rozmiar:</b> <span style="color:${COLORS[sel.size]}">${sel.size}</span></div><div><b>Czas realizacji:</b> ${sel.lt} dni</div><p><button class="danger" data-del="${sel.id}">Usuń punkt</button></p>`;
+  $("cutDate").value=state.cut;$("scope").value=state.scope;
+}
+function del(id){state.data=state.data.filter(d=>d.id!==id);if(selected===id)selected=null;save();render()}
+
+const tip=$("tip");
+$("chart").addEventListener("mousemove",e=>{
+  const id=e.target.dataset&&e.target.dataset.id;
+  if(!id){tip.style.display="none";return}
+  const d=state.data.find(x=>x.id==id);
+  tip.innerHTML=`${fmt(d.date)}<br>Rozmiar: <b style="color:${COLORS[d.size]}">${d.size}</b><br>Czas realizacji: <b>${d.lt}</b> dni`;
+  tip.style.display="block";tip.style.left=e.clientX+14+"px";tip.style.top=e.clientY+14+"px";
+});
+$("chart").addEventListener("mouseleave",()=>tip.style.display="none");
+$("chart").addEventListener("click",e=>{const id=e.target.dataset&&e.target.dataset.id;selected=id?+id:null;render()});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-del]");if(b)del(+b.dataset.del)});
+document.querySelectorAll(".sz").forEach(e=>e.addEventListener("change",render));
+$("cutDate").addEventListener("change",e=>{state.cut=e.target.value;save();render()});
+$("cutClear").onclick=()=>{state.cut="";save();render()};
+$("cutDelete").onclick=()=>{
+  if(!state.cut)return alert("Wybierz datę odcięcia.");
+  const n=state.data.filter(d=>d.date<state.cut).length;
+  if(n&&confirm(`Usunąć trwale ${n} punktów starszych niż ${state.cut}?`)){state.data=state.data.filter(d=>d.date>=state.cut);selected=null;save();render()}
+};
+$("scope").addEventListener("change",e=>{state.scope=e.target.value;save();render()});
+$("refresh").onclick=()=>{state.scope=$("scope").value;save();render()};
+$("addBtn").onclick=()=>{
+  const date=$("addDate").value,lt=parseFloat($("addLt").value);
+  if(!date||!(lt>=0))return alert("Podaj datę i czas realizacji.");
+  const id=Math.max(0,...state.data.map(d=>d.id))+1;
+  state.data.push({id,date,size:$("addSize").value,lt});selected=id;save();render();$("addLt").value="";
+};
+$("exportBtn").onclick=()=>{
+  const csv="Data ukończenia,Deklarowany rozmiar,Czas realizacji\n"+[...state.data].sort((a,b)=>a.date<b.date?-1:1).map(d=>`${d.date},${d.size},${d.lt}`).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="lead-times.csv";a.click();
+};
+$("reset").onclick=()=>{if(confirm("Przywrócić dane z pliku Excel?")){state={data:structuredClone(ORIGINAL),cut:"",scope:"all"};selected=null;save();render()}};
+$("addDate").value=new Date().toISOString().slice(0,10);
+render();
+</script>
+</body>
+</html>
