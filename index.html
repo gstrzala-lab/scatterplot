@@ -115,6 +115,21 @@ td button{padding:1px 7px}
     <label>Liczba zadań S</label><input type="number" id="calcS" min="0" step="1" value="0">
     <label>Liczba zadań M</label><input type="number" id="calcM" min="0" step="1" value="0">
     <label>Liczba zadań L</label><input type="number" id="calcL" min="0" step="1" value="0">
+    <label>Okres danych historycznych</label>
+    <select id="calcPeriod">
+      <option value="all">Cały zakres</option>
+      <option value="30">Ostatnie 30 dni</option>
+      <option value="90">Ostatnie 90 dni</option>
+      <option value="180">Ostatnie 180 dni</option>
+      <option value="365">Ostatni rok</option>
+      <option value="custom">Zakres niestandardowy</option>
+    </select>
+    <div id="calcCustomRange" style="display:none">
+      <div class="row">
+        <div><label>Od</label><input type="date" id="calcFrom"></div>
+        <div><label>Do</label><input type="date" id="calcTo"></div>
+      </div>
+    </div>
     <p><button class="primary" id="calcBtn">Oblicz prognozę</button></p>
     <div class="calc-result" id="calcResult"></div>
   </div>
@@ -258,14 +273,25 @@ function renderThroughput(){
 }
 
 function bootstrapSample(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function calcPeriodData(){
+  const mode=$("calcPeriod").value;
+  if(mode==="all")return state.data;
+  if(mode==="custom"){
+    const from=$("calcFrom").value,to=$("calcTo").value;
+    return state.data.filter(d=>(!from||d.date>=from)&&(!to||d.date<=to));
+  }
+  const days=+mode,cutoff=new Date(Date.now()-days*864e5).toISOString().slice(0,10);
+  return state.data.filter(d=>d.date>=cutoff);
+}
 function runForecast(){
   const counts={S:+$("calcS").value||0,M:+$("calcM").value||0,L:+$("calcL").value||0};
   const total=counts.S+counts.M+counts.L;
   const box=$("calcResult");
   if(total<=0){box.style.display="block";box.innerHTML=`<p class="hint">Podaj liczbę zadań co najmniej jednego rozmiaru.</p>`;return}
-  const bySize={S:state.data.filter(d=>d.size==="S").map(d=>d.lt),M:state.data.filter(d=>d.size==="M").map(d=>d.lt),L:state.data.filter(d=>d.size==="L").map(d=>d.lt)};
+  const periodData=calcPeriodData();
+  const bySize={S:periodData.filter(d=>d.size==="S").map(d=>d.lt),M:periodData.filter(d=>d.size==="M").map(d=>d.lt),L:periodData.filter(d=>d.size==="L").map(d=>d.lt)};
   const missing=["S","M","L"].filter(sz=>counts[sz]>0&&bySize[sz].length===0);
-  if(missing.length){box.style.display="block";box.innerHTML=`<p class="hint">Brak danych historycznych dla rozmiaru: ${missing.join(", ")}.</p>`;return}
+  if(missing.length){box.style.display="block";box.innerHTML=`<p class="hint">Brak danych historycznych dla rozmiaru: ${missing.join(", ")} w wybranym okresie. Wybierz szerszy zakres dat.</p>`;return}
   const N=5000,totals=[];
   for(let i=0;i<N;i++){
     let sum=0;
@@ -275,11 +301,13 @@ function runForecast(){
   const p50=percentile(totals,50),p85=percentile(totals,85),p95=percentile(totals,95);
   const today=new Date();
   const dateAt=days=>{const d=new Date(today.getTime()+days*864e5);return fmt(d.toISOString().slice(0,10))};
+  const sampleInfo=["S","M","L"].filter(sz=>counts[sz]>0).map(sz=>`${sz}: n=${bySize[sz].length}`).join(", ");
   box.style.display="block";
   box.innerHTML=`<p>Prognoza dla ${total} zadań (S=${counts.S}, M=${counts.M}, L=${counts.L}):</p>
     <p class="big p50">P50: ${Math.round(p50)} dni <span class="hint">(do ${dateAt(p50)})</span></p>
     <p class="big p85">P85: ${Math.round(p85)} dni <span class="hint">(do ${dateAt(p85)})</span></p>
-    <p class="big p95">P95: ${Math.round(p95)} dni <span class="hint">(do ${dateAt(p95)})</span></p>`;
+    <p class="big p95">P95: ${Math.round(p95)} dni <span class="hint">(do ${dateAt(p95)})</span></p>
+    <p class="hint">Dane historyczne użyte do próbkowania: ${sampleInfo}.</p>`;
 }
 
 const tip=$("tip");
@@ -316,6 +344,7 @@ $("exportBtn").onclick=()=>{
 $("reset").onclick=()=>{if(confirm("Przywrócić dane z pliku Excel?")){state={data:structuredClone(ORIGINAL),cut:"",scope:"all"};selected=null;save();render()}};
 $("thrWeek").onclick=()=>{throughputMode="week";$("thrWeek").classList.add("active");$("thrMonth").classList.remove("active");renderThroughput()};
 $("thrMonth").onclick=()=>{throughputMode="month";$("thrMonth").classList.add("active");$("thrWeek").classList.remove("active");renderThroughput()};
+$("calcPeriod").addEventListener("change",e=>{$("calcCustomRange").style.display=e.target.value==="custom"?"block":"none"});
 $("calcBtn").onclick=runForecast;
 $("addDate").value=new Date().toISOString().slice(0,10);
 render();
