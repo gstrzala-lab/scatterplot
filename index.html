@@ -166,7 +166,7 @@ td button{padding:1px 7px}
   <div class="panel">
     <h2>Wykres X (indywidualne wartości) – przepustowość tygodniowa</h2>
     <svg id="xmrX" viewBox="0 0 900 340"></svg>
-    <p class="hint">Linia środkowa = średnia tygodniowej przepustowości. Linie kontrolne (UNPL/LNPL): X̄ ± 2,66 × średni Moving Range (mR̄). Cienkie linie kropkowane = pasma σ (1/3 odległości między średnią a NPL), żarówki = wykryte sygnały.</p>
+    <p class="hint">Linia środkowa = średnia tygodniowej przepustowości. Linie kontrolne (UNPL/LNPL): X̄ ± 2,66 × średni Moving Range (mR̄). Strefa między średnią a UNPL (i analogicznie LNPL) jest podzielona na 3 równe pasma: C (0–1σ), B (1–2σ), A (2–3σ). Żarówki = wykryte sygnały.</p>
   </div>
   <div class="panel">
     <h2>Wykres mR (ruchomy rozstęp)</h2>
@@ -187,12 +187,12 @@ td button{padding:1px 7px}
     <p class="hint">UCL(X) = X̄ + 2,66 × mR̄, LCL(X) = X̄ − 2,66 × mR̄.</p>
     <p class="hint">UCL(mR) = mR̄ + 3,27 × mR̄, LCL(mR) = mR̄ − 3,27 × mR̄ (ucięta do 0).</p>
     <p class="hint">Punkty poza granicami kontrolnymi oznaczają sygnał specjalnej przyczyny zmienności (nie szum procesu).</p>
-    <p class="hint">σ = (UNPL − X̄) / 3 = 2,66 × mR̄ / 3. Pasma σ wyznaczają linie X̄ ± 1σ, ±2σ, ±3σ (±3σ = NPL).</p>
+    <p class="hint">Szerokość pasma σ = (UNPL − X̄) / 3 = 2,66 × mR̄ / 3. Pasma: C (X̄ → ±1σ), B (±1σ → ±2σ), A (±2σ → NPL).</p>
   </div>
   <div class="panel">
     <h2>Reguły sygnałów (wykres X)</h2>
     <div id="xmrRules"></div>
-    <p class="hint">Reguły 2 i 3 liczone po tej samej stronie średniej: „poza liniami σ” = powyżej +2σ / poniżej −2σ (reguła 2) oraz powyżej +1σ / poniżej −1σ (reguła 3). Żarówka pojawia się na punkcie kończącym wzorzec. Reguła 1 jest sprawdzana także na wykresie mR.</p>
+    <p class="hint">Reguły 2 i 3 liczone po tej samej stronie średniej: „poza linią pasma” = powyżej +2σ / poniżej −2σ (reguła 2, strefa A) oraz powyżej +1σ / poniżej −1σ (reguła 3, strefy A i B). Żarówka pojawia się na punkcie kończącym wzorzec. Reguła 1 jest sprawdzana także na wykresie mR.</p>
   </div>
   <div class="panel">
     <h2>Eksport</h2>
@@ -439,8 +439,8 @@ function computeXMR(weekly){
 
 const RULES={
   1:{color:"#f2cc0c",name:"Żółta żarówka",desc:"Pojedynczy punkt poza korytarzem NPL – sygnał o przyczynie możliwej do zidentyfikowania."},
-  2:{color:"#f0883e",name:"Pomarańczowa żarówka",desc:"Dwa z trzech kolejnych punktów poza linią 2σ (po tej samej stronie) – umiarkowany sygnał."},
-  3:{color:"#a371f7",name:"Fioletowa żarówka",desc:"Trzy z pięciu kolejnych punktów poza linią 1σ (po tej samej stronie) – umiarkowany, trwały sygnał."},
+  2:{color:"#f0883e",name:"Pomarańczowa żarówka",desc:"Dwa z trzech kolejnych punktów poza linią pasma 2σ (po tej samej stronie średniej) – umiarkowany sygnał."},
+  3:{color:"#a371f7",name:"Fioletowa żarówka",desc:"Trzy z pięciu kolejnych punktów poza linią pasma 1σ (po tej samej stronie średniej) – umiarkowany, trwały sygnał."},
   4:{color:"#f0f6fc",name:"Biała żarówka",desc:"Osiem kolejnych punktów po jednej stronie średniej – sygnał niewielkiej, trwałej zmiany."}
 };
 const bulbShape=c=>`<circle cx="0" cy="-2" r="5" fill="${c}" stroke="#0d1117" stroke-width="1"/><rect x="-2.5" y="2.5" width="5" height="3.5" rx="1" fill="#8b949e" stroke="#0d1117" stroke-width="1"/>`;
@@ -478,6 +478,12 @@ function lineChart(svgId,points,{centerLabel,center,ucl,lcl,color,fmtX,fmtVal,si
   points.forEach((p,i)=>{if(i%every===0)s+=`<text x="${X(i)}" y="${H-m.b+16}" text-anchor="middle">${fmtX(p.x)}</text>`});
   s+=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
   if(sigma){
+    const zoneFill=["#3fb950","#d29922","#f85149"],zoneName=["C","B","A"];
+    [1,-1].forEach(sd=>[1,2,3].forEach(k=>{
+      const ya=Y(center+sd*(k-1)*sigma),yb=Y(center+sd*k*sigma);
+      s+=`<rect x="${m.l}" y="${Math.min(ya,yb)}" width="${iw}" height="${Math.abs(ya-yb)}" fill="${zoneFill[k-1]}" opacity="${0.05+0.03*k}"/>`;
+      s+=`<text x="${m.l+4}" y="${(ya+yb)/2+4}" style="fill:${zoneFill[k-1]};opacity:.8">${zoneName[k-1]}</text>`;
+    }));
     [1,2].forEach(k=>[1,-1].forEach(sd=>{
       const v=center+sd*k*sigma,col=k===1?"#6e7681":"#d29922";
       s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${col}" stroke-width="1" stroke-dasharray="2 4"/><text x="${W-m.r+4}" y="${Y(v)+4}" style="fill:${col}">${sd>0?"+":"−"}${k}σ: ${v.toFixed(1)}</text>`;
