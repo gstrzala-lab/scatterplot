@@ -42,6 +42,12 @@ th{color:var(--muted);position:sticky;top:0;background:var(--panel)}
 td button{padding:1px 7px}
 .hint{color:var(--muted);font-size:12px;margin:6px 0 0}
 .sel-box{border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:10px;display:none}
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tabs button{width:auto;flex:1}
+.tabs button.active{background:#238636;border-color:#2ea043}
+.calc-result{border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:10px;display:none}
+.calc-result .big{font-size:20px;font-weight:600}
+.calc-result .p50{color:#e3b341}.calc-result .p85{color:#d2a8ff}.calc-result .p95{color:#ff7b72}
 </style>
 </head>
 <body>
@@ -63,6 +69,15 @@ td button{padding:1px 7px}
     </div>
     <svg id="chart" viewBox="0 0 900 460"></svg>
     <p class="hint">Kliknij punkt, aby go zaznaczyć i usunąć. Percentyle liczone na widocznych punktach (interpolacja liniowa, jak PERCENTYLE.INC).</p>
+  </div>
+  <div class="panel">
+    <h2>Przepustowość</h2>
+    <div class="tabs">
+      <button id="thrWeek" class="active">Tygodniowa</button>
+      <button id="thrMonth">Miesięczna</button>
+    </div>
+    <svg id="throughput" viewBox="0 0 900 260"></svg>
+    <p class="hint" id="throughputHint"></p>
   </div>
   <div class="panel">
     <h2>Dane (<span id="count"></span>)</h2>
@@ -93,6 +108,15 @@ td button{padding:1px 7px}
     <select id="scope"><option value="all">Wszystkich widocznych punktów</option><option value="S">Tylko S</option><option value="M">Tylko M</option><option value="L">Tylko L</option></select>
     <p><button class="primary" id="refresh">Aktualizuj prognozy</button></p>
     <p class="hint" id="forecast"></p>
+  </div>
+  <div class="panel">
+    <h2>Kalkulator prognoz</h2>
+    <p class="hint">Symulacja Monte Carlo (5000 prób): dla każdego zadania losowany jest czas z historii danego rozmiaru (bootstrap), wyniki sumowane jako praca sekwencyjna.</p>
+    <label>Liczba zadań S</label><input type="number" id="calcS" min="0" step="1" value="0">
+    <label>Liczba zadań M</label><input type="number" id="calcM" min="0" step="1" value="0">
+    <label>Liczba zadań L</label><input type="number" id="calcL" min="0" step="1" value="0">
+    <p><button class="primary" id="calcBtn">Oblicz prognozę</button></p>
+    <div class="calc-result" id="calcResult"></div>
   </div>
   <div class="panel">
     <h2>Dane</h2>
@@ -179,8 +203,84 @@ function render(){
   $("selbox").style.display=sel?"block":"none";$("selhint").style.display=sel?"none":"block";
   if(sel)$("selbox").innerHTML=`<div><b>Data ukończenia:</b> ${fmt(sel.date)}</div><div><b>Rozmiar:</b> <span style="color:${COLORS[sel.size]}">${sel.size}</span></div><div><b>Czas realizacji:</b> ${sel.lt} dni</div><p><button class="danger" data-del="${sel.id}">Usuń punkt</button></p>`;
   $("cutDate").value=state.cut;$("scope").value=state.scope;
+  renderThroughput();
 }
 function del(id){state.data=state.data.filter(d=>d.id!==id);if(selected===id)selected=null;save();render()}
+
+let throughputMode="week";
+function isoWeekStart(ms){
+  const d=new Date(ms);const day=(d.getUTCDay()+6)%7;
+  return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-day);
+}
+function periodKey(dateStr,mode){
+  const ms=t(dateStr);
+  if(mode==="month"){const d=new Date(ms);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)}
+  return isoWeekStart(ms);
+}
+function periodLabel(ms,mode){
+  const d=new Date(ms);
+  if(mode==="month")return `${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
+  return `${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+}
+function renderThroughput(){
+  const v=visible(),mode=throughputMode;
+  const groups=new Map();
+  v.forEach(d=>{
+    const k=periodKey(d.date,mode);
+    if(!groups.has(k))groups.set(k,{S:0,M:0,L:0});
+    groups.get(k)[d.size]++;
+  });
+  const keys=[...groups.keys()].sort((a,b)=>a-b);
+  const W=900,H=260,m={l:40,r:14,t:14,b:36},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  if(!keys.length){$("throughput").innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">Brak danych w wybranym zakresie</text>`;$("throughputHint").textContent="";return}
+  const totals=keys.map(k=>{const g=groups.get(k);return g.S+g.M+g.L});
+  const ymax=Math.max(1,...totals)*1.15;
+  const bw=iw/keys.length*0.7,gap=iw/keys.length;
+  const Y=y=>m.t+ih-y/ymax*ih;
+  let s=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
+  const step=Math.max(1,Math.round(ymax/5));
+  for(let y=0;y<=ymax;y+=step)s+=`<line class="grid" x1="${m.l}" x2="${W-m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${m.l-6}" y="${Y(y)+4}" text-anchor="end">${y}</text>`;
+  const every=keys.length>20?Math.ceil(keys.length/20):1;
+  keys.forEach((k,i)=>{
+    const g=groups.get(k),x=m.l+i*gap+(gap-bw)/2;
+    let yOff=0;
+    ["S","M","L"].forEach(sz=>{
+      const val=g[sz];if(!val)return;
+      const h=val/ymax*ih;
+      s+=`<rect x="${x}" y="${Y(yOff+val)}" width="${bw}" height="${h}" fill="${COLORS[sz]}"><title>${periodLabel(k,mode)}: ${sz}=${val}</title></rect>`;
+      yOff+=val;
+    });
+    if(i%every===0)s+=`<text x="${x+bw/2}" y="${H-m.b+16}" text-anchor="middle">${periodLabel(k,mode)}</text>`;
+  });
+  $("throughput").innerHTML=s;
+  const avg=(totals.reduce((a,b)=>a+b,0)/totals.length).toFixed(1);
+  $("throughputHint").textContent=`${keys.length} ${mode==="week"?"tygodni":"miesięcy"} z danymi, średnio ${avg} zadań na okres. Kolory słupków = deklarowany rozmiar.`;
+}
+
+function bootstrapSample(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function runForecast(){
+  const counts={S:+$("calcS").value||0,M:+$("calcM").value||0,L:+$("calcL").value||0};
+  const total=counts.S+counts.M+counts.L;
+  const box=$("calcResult");
+  if(total<=0){box.style.display="block";box.innerHTML=`<p class="hint">Podaj liczbę zadań co najmniej jednego rozmiaru.</p>`;return}
+  const bySize={S:state.data.filter(d=>d.size==="S").map(d=>d.lt),M:state.data.filter(d=>d.size==="M").map(d=>d.lt),L:state.data.filter(d=>d.size==="L").map(d=>d.lt)};
+  const missing=["S","M","L"].filter(sz=>counts[sz]>0&&bySize[sz].length===0);
+  if(missing.length){box.style.display="block";box.innerHTML=`<p class="hint">Brak danych historycznych dla rozmiaru: ${missing.join(", ")}.</p>`;return}
+  const N=5000,totals=[];
+  for(let i=0;i<N;i++){
+    let sum=0;
+    for(const sz of ["S","M","L"])for(let j=0;j<counts[sz];j++)sum+=bootstrapSample(bySize[sz]);
+    totals.push(sum);
+  }
+  const p50=percentile(totals,50),p85=percentile(totals,85),p95=percentile(totals,95);
+  const today=new Date();
+  const dateAt=days=>{const d=new Date(today.getTime()+days*864e5);return fmt(d.toISOString().slice(0,10))};
+  box.style.display="block";
+  box.innerHTML=`<p>Prognoza dla ${total} zadań (S=${counts.S}, M=${counts.M}, L=${counts.L}):</p>
+    <p class="big p50">P50: ${Math.round(p50)} dni <span class="hint">(do ${dateAt(p50)})</span></p>
+    <p class="big p85">P85: ${Math.round(p85)} dni <span class="hint">(do ${dateAt(p85)})</span></p>
+    <p class="big p95">P95: ${Math.round(p95)} dni <span class="hint">(do ${dateAt(p95)})</span></p>`;
+}
 
 const tip=$("tip");
 $("chart").addEventListener("mousemove",e=>{
@@ -214,6 +314,9 @@ $("exportBtn").onclick=()=>{
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="lead-times.csv";a.click();
 };
 $("reset").onclick=()=>{if(confirm("Przywrócić dane z pliku Excel?")){state={data:structuredClone(ORIGINAL),cut:"",scope:"all"};selected=null;save();render()}};
+$("thrWeek").onclick=()=>{throughputMode="week";$("thrWeek").classList.add("active");$("thrMonth").classList.remove("active");renderThroughput()};
+$("thrMonth").onclick=()=>{throughputMode="month";$("thrMonth").classList.add("active");$("thrWeek").classList.remove("active");renderThroughput()};
+$("calcBtn").onclick=runForecast;
 $("addDate").value=new Date().toISOString().slice(0,10);
 render();
 </script>
