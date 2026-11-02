@@ -55,6 +55,11 @@ td button{padding:1px 7px}
 .tabpanel.active{display:block}
 .xmr-stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px}
 .xmr-stats .card b{font-size:18px}
+.rule{display:flex;gap:8px;align-items:flex-start;margin:0 0 8px;font-size:12px}
+.rule svg{flex:none;width:14px;height:18px}
+.sig-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sig-list span{display:inline-flex;align-items:center;gap:3px}
+.sig-list svg{width:12px;height:15px}
 </style>
 </head>
 <body>
@@ -160,12 +165,12 @@ td button{padding:1px 7px}
   <div class="xmr-stats" id="xmrStats"></div>
   <div class="panel">
     <h2>Wykres X (indywidualne wartości) – przepustowość tygodniowa</h2>
-    <svg id="xmrX" viewBox="0 0 900 320"></svg>
-    <p class="hint">Linia środkowa = średnia tygodniowej przepustowości. Linie kontrolne: X̄ ± 2,66 × średni Moving Range (mR̄).</p>
+    <svg id="xmrX" viewBox="0 0 900 340"></svg>
+    <p class="hint">Linia środkowa = średnia tygodniowej przepustowości. Linie kontrolne (UNPL/LNPL): X̄ ± 2,66 × średni Moving Range (mR̄). Cienkie linie kropkowane = pasma σ (1/3 odległości między średnią a NPL), żarówki = wykryte sygnały.</p>
   </div>
   <div class="panel">
     <h2>Wykres mR (ruchomy rozstęp)</h2>
-    <svg id="xmrMR" viewBox="0 0 900 260"></svg>
+    <svg id="xmrMR" viewBox="0 0 900 270"></svg>
     <p class="hint">Linia środkowa = mR̄. Linie kontrolne: mR̄ ± 3,27 × mR̄ (dolna granica techniczna ograniczona do 0, bo mR nie może być ujemny).</p>
   </div>
   <div class="panel">
@@ -182,6 +187,12 @@ td button{padding:1px 7px}
     <p class="hint">UCL(X) = X̄ + 2,66 × mR̄, LCL(X) = X̄ − 2,66 × mR̄.</p>
     <p class="hint">UCL(mR) = mR̄ + 3,27 × mR̄, LCL(mR) = mR̄ − 3,27 × mR̄ (ucięta do 0).</p>
     <p class="hint">Punkty poza granicami kontrolnymi oznaczają sygnał specjalnej przyczyny zmienności (nie szum procesu).</p>
+    <p class="hint">σ = (UNPL − X̄) / 3 = 2,66 × mR̄ / 3. Pasma σ wyznaczają linie X̄ ± 1σ, ±2σ, ±3σ (±3σ = NPL).</p>
+  </div>
+  <div class="panel">
+    <h2>Reguły sygnałów (wykres X)</h2>
+    <div id="xmrRules"></div>
+    <p class="hint">Reguły 2 i 3 liczone po tej samej stronie średniej: „poza liniami σ” = powyżej +2σ / poniżej −2σ (reguła 2) oraz powyżej +1σ / poniżej −1σ (reguła 3). Żarówka pojawia się na punkcie kończącym wzorzec. Reguła 1 jest sprawdzana także na wykresie mR.</p>
   </div>
   <div class="panel">
     <h2>Eksport</h2>
@@ -420,15 +431,44 @@ function computeXMR(weekly){
   const mrbar=mrVals.reduce((a,b)=>a+b,0)/mrVals.length;
   return{
     vals,mr,xbar,mrbar,
+    sigma:2.66*mrbar/3,
     xUCL:xbar+2.66*mrbar,xLCL:xbar-2.66*mrbar,
     mrUCL:mrbar+3.27*mrbar,mrLCL:Math.max(0,mrbar-3.27*mrbar)
   };
 }
-function lineChart(svgId,points,{centerLabel,center,ucl,lcl,color,fmtX,fmtVal}){
-  const W=900,H=svgId==="xmrX"?320:260,m={l:52,r:70,t:16,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+
+const RULES={
+  1:{color:"#f2cc0c",name:"Żółta żarówka",desc:"Pojedynczy punkt poza korytarzem NPL – sygnał o przyczynie możliwej do zidentyfikowania."},
+  2:{color:"#f0883e",name:"Pomarańczowa żarówka",desc:"Dwa z trzech kolejnych punktów poza linią 2σ (po tej samej stronie) – umiarkowany sygnał."},
+  3:{color:"#a371f7",name:"Fioletowa żarówka",desc:"Trzy z pięciu kolejnych punktów poza linią 1σ (po tej samej stronie) – umiarkowany, trwały sygnał."},
+  4:{color:"#f0f6fc",name:"Biała żarówka",desc:"Osiem kolejnych punktów po jednej stronie średniej – sygnał niewielkiej, trwałej zmiany."}
+};
+const bulbShape=c=>`<circle cx="0" cy="-2" r="5" fill="${c}" stroke="#0d1117" stroke-width="1"/><rect x="-2.5" y="2.5" width="5" height="3.5" rx="1" fill="#8b949e" stroke="#0d1117" stroke-width="1"/>`;
+const bulbInline=c=>`<svg viewBox="-7 -9 14 18">${bulbShape(c)}</svg>`;
+
+function detectSignals(vals,xbar,sigma){
+  const ucl=xbar+3*sigma,lcl=xbar-3*sigma;
+  return vals.map((v,i)=>{
+    const found=[];
+    if(v>ucl||v<lcl)found.push(1);
+    for(const side of [1,-1]){
+      const beyond=(k,z)=>side*(vals[k]-xbar)>z*sigma;
+      const count=(from,z)=>{let c=0;for(let k=from;k<=i;k++)if(beyond(k,z))c++;return c};
+      if(i>=2&&beyond(i,2)&&count(i-2,2)>=2&&!found.includes(2))found.push(2);
+      if(i>=4&&beyond(i,1)&&count(i-4,1)>=3&&!found.includes(3))found.push(3);
+    }
+    if(i>=7){
+      const w=vals.slice(i-7,i+1);
+      if(w.every(x=>x>xbar)||w.every(x=>x<xbar))found.push(4);
+    }
+    return found.sort();
+  });
+}
+function lineChart(svgId,points,{centerLabel,center,ucl,lcl,color,fmtX,fmtVal,sigma,signals}){
+  const W=900,H=svgId==="xmrX"?340:270,m={l:52,r:70,t:svgId==="xmrX"?34:24,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
   const n=points.length;
   const vals=points.map(p=>p.y).filter(v=>v!=null);
-  const ymin=Math.min(0,lcl,...vals)*1.05,ymax=Math.max(ucl,...vals)*1.15||1;
+  const ymin=Math.min(0,lcl,...vals)*1.05,ymax=Math.max(ucl,...vals)*1.08||1;
   const X=i=>m.l+(n<=1?iw/2:i/(n-1)*iw),Y=y=>m.t+ih-(y-ymin)/(ymax-ymin)*ih;
   let s="";
   const step=Math.max(1,Math.round((ymax-ymin)/6));
@@ -437,47 +477,65 @@ function lineChart(svgId,points,{centerLabel,center,ucl,lcl,color,fmtX,fmtVal}){
   const every=n>24?Math.ceil(n/24):1;
   points.forEach((p,i)=>{if(i%every===0)s+=`<text x="${X(i)}" y="${H-m.b+16}" text-anchor="middle">${fmtX(p.x)}</text>`});
   s+=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
+  if(sigma){
+    [1,2].forEach(k=>[1,-1].forEach(sd=>{
+      const v=center+sd*k*sigma,col=k===1?"#6e7681":"#d29922";
+      s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${col}" stroke-width="1" stroke-dasharray="2 4"/><text x="${W-m.r+4}" y="${Y(v)+4}" style="fill:${col}">${sd>0?"+":"−"}${k}σ: ${v.toFixed(1)}</text>`;
+    }));
+  }
   s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(center)}" y2="${Y(center)}" stroke="#8b949e" stroke-width="1.4"/><text x="${W-m.r+4}" y="${Y(center)+4}">${centerLabel}: ${center.toFixed(1)}</text>`;
-  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(ucl)}" y2="${Y(ucl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(ucl)+4}" style="fill:#ff7b72">UCL: ${ucl.toFixed(1)}</text>`;
-  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(lcl)}" y2="${Y(lcl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(lcl)+4}" style="fill:#ff7b72">LCL: ${lcl.toFixed(1)}</text>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(ucl)}" y2="${Y(ucl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(ucl)+4}" style="fill:#ff7b72">${sigma?"UNPL":"UCL"}: ${ucl.toFixed(1)}</text>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(lcl)}" y2="${Y(lcl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(lcl)+4}" style="fill:#ff7b72">${sigma?"LNPL":"LCL"}: ${lcl.toFixed(1)}</text>`;
   let path="";
   points.forEach((p,i)=>{if(p.y==null)return;path+=(path?"L":"M")+X(i)+","+Y(p.y)+" "});
   s+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>`;
   points.forEach((p,i)=>{
     if(p.y==null)return;
-    const out=p.y>ucl||p.y<lcl;
-    s+=`<circle cx="${X(i)}" cy="${Y(p.y)}" r="5" fill="${out?"#ff7b72":color}" stroke="#0d1117" stroke-width="1.5"><title>${fmtX(p.x)}: ${p.y.toFixed(1)}</title></circle>`;
+    const sig=signals&&signals[i]||[];
+    s+=`<circle cx="${X(i)}" cy="${Y(p.y)}" r="5" fill="${sig.length?"#ff7b72":color}" stroke="#0d1117" stroke-width="1.5"><title>${fmtX(p.x)}: ${p.y.toFixed(1)}</title></circle>`;
+    const dir=p.y>=center?-1:1;
+    sig.forEach((r,j)=>{
+      const by=Math.max(10,Math.min(H-m.b-6,Y(p.y)+dir*(16+j*16)));
+      s+=`<g transform="translate(${X(i)},${by})"><title>${RULES[r].name}: ${RULES[r].desc}</title>${bulbShape(RULES[r].color)}</g>`;
+    });
   });
   $(svgId).innerHTML=s;
+}
+function signalList(rules){
+  return rules.length?`<div class="sig-list">${rules.map(r=>`<span title="${RULES[r].desc}">${bulbInline(RULES[r].color)}${r}</span>`).join("")}</div>`:"–";
 }
 function renderXMR(){
   const weekly=buildWeeklyThroughput();
   const st=computeXMR(weekly);
+  const xSig=detectSignals(st.vals,st.xbar,st.sigma);
+  const mrSig=st.mr.map(v=>v!=null&&(v>st.mrUCL||v<st.mrLCL)?[1]:[]);
+  $("xmrRules").innerHTML=Object.entries(RULES).map(([k,r])=>`<div class="rule">${bulbInline(r.color)}<div><b>${k}. ${r.name}</b><br><span style="color:var(--muted)">${r.desc}</span></div></div>`).join("");
+  const nSig=xSig.filter(a=>a.length).length+mrSig.filter(a=>a.length).length;
   $("xmrStats").innerHTML=[
     [weekly.length,"tygodni"],
     [st.xbar.toFixed(1),"X̄ (śr. tygodniowa)"],
     [st.mrbar.toFixed(1),"mR̄ (śr. moving range)"],
-    [st.xUCL.toFixed(1),"UCL(X)"],
-    [st.xLCL.toFixed(1),"LCL(X)"],
+    [st.sigma.toFixed(2),"σ (1/3 X̄→NPL)"],
+    [st.xUCL.toFixed(1),"UNPL"],
+    [st.xLCL.toFixed(1),"LNPL"],
     [st.mrUCL.toFixed(1),"UCL(mR)"],
+    [nSig,"punktów z sygnałem"],
   ].map(([v,l])=>`<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
   lineChart("xmrX",weekly.map(w=>({x:w.weekStart,y:w.value})),
-    {centerLabel:"X̄",center:st.xbar,ucl:st.xUCL,lcl:st.xLCL,color:"#58a6ff",fmtX:fmtWeek});
+    {centerLabel:"X̄",center:st.xbar,ucl:st.xUCL,lcl:st.xLCL,color:"#58a6ff",fmtX:fmtWeek,sigma:st.sigma,signals:xSig});
   lineChart("xmrMR",weekly.map((w,i)=>({x:w.weekStart,y:st.mr[i]})),
-    {centerLabel:"mR̄",center:st.mrbar,ucl:st.mrUCL,lcl:st.mrLCL,color:"#d2a8ff",fmtX:fmtWeek});
+    {centerLabel:"mR̄",center:st.mrbar,ucl:st.mrUCL,lcl:st.mrLCL,color:"#d2a8ff",fmtX:fmtWeek,signals:mrSig});
   $("xmrCount").textContent=weekly.length;
   $("xmrRows").innerHTML=weekly.map((w,i)=>{
     const mrv=st.mr[i];
-    const xOut=w.value>st.xUCL||w.value<st.xLCL;
-    const mrOut=mrv!=null&&(mrv>st.mrUCL||mrv<st.mrLCL);
-    const sig=[xOut?"X poza granicami":"",mrOut?"mR poza granicami":""].filter(Boolean).join(", ")||"–";
-    return `<tr><td>${fmt(new Date(w.weekStart).toISOString().slice(0,10))}</td><td style="${xOut?"color:#ff7b72;font-weight:600":""}">${w.value}</td><td style="${mrOut?"color:#ff7b72;font-weight:600":""}">${mrv==null?"–":mrv}</td><td>${sig}</td></tr>`;
+    const xs=xSig[i],ms=mrSig[i];
+    return `<tr><td>${fmt(new Date(w.weekStart).toISOString().slice(0,10))}</td><td style="${xs.includes(1)?"color:#ff7b72;font-weight:600":""}">${w.value}</td><td style="${ms.length?"color:#ff7b72;font-weight:600":""}">${mrv==null?"–":mrv}</td><td>${signalList(xs)}${ms.length?`<div class="hint">mR poza granicami</div>`:""}</td></tr>`;
   }).join("");
 }
 function fmtWeek(ms){const d=new Date(ms);return `${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,"0")}`}
 $("xmrExport").onclick=()=>{
-  const weekly=buildWeeklyThroughput(),st=computeXMR(weekly);
-  const csv="Tydzień od,Przepustowość,Moving Range\n"+weekly.map((w,i)=>`${new Date(w.weekStart).toISOString().slice(0,10)},${w.value},${st.mr[i]==null?"":st.mr[i]}`).join("\n");
+  const weekly=buildWeeklyThroughput(),st=computeXMR(weekly),sig=detectSignals(st.vals,st.xbar,st.sigma);
+  const csv="Tydzień od,Przepustowość,Moving Range,Sygnały (reguły)\n"+weekly.map((w,i)=>`${new Date(w.weekStart).toISOString().slice(0,10)},${w.value},${st.mr[i]==null?"":st.mr[i]},${sig[i].join("+")}`).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="throughput-weekly-xmr.csv";a.click();
 };
 function showTab(tab){
