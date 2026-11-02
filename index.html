@@ -48,6 +48,13 @@ td button{padding:1px 7px}
 .calc-result{border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:10px;display:none}
 .calc-result .big{font-size:20px;font-weight:600}
 .calc-result .p50{color:#e3b341}.calc-result .p85{color:#d2a8ff}.calc-result .p95{color:#ff7b72}
+.page-tabs{display:flex;gap:8px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--panel)}
+.page-tabs button{width:auto;background:transparent;border:none;border-bottom:3px solid transparent;border-radius:0;padding:12px 10px;color:var(--muted);font-weight:600}
+.page-tabs button.active{color:var(--text);border-bottom-color:#2ea043}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
+.xmr-stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px}
+.xmr-stats .card b{font-size:18px}
 </style>
 </head>
 <body>
@@ -55,6 +62,11 @@ td button{padding:1px 7px}
   <h1>Lead Times 2024–25 – scatterplot</h1>
   <p>Data ukończenia vs czas realizacji (dni), kolor = deklarowany rozmiar. Linie: percentyle 50 / 85 / 95.</p>
 </header>
+<nav class="page-tabs">
+  <button id="pageTabScatter" class="active">Scatterplot – Lead Time</button>
+  <button id="pageTabXmr">XMR – Przepustowość tygodniowa</button>
+</nav>
+<div id="tab-scatter" class="tabpanel active">
 <main>
 <section>
   <div class="cards" id="cards"></div>
@@ -141,6 +153,43 @@ td button{padding:1px 7px}
   </div>
 </aside>
 </main>
+</div>
+<div id="tab-xmr" class="tabpanel">
+<main>
+<section>
+  <div class="xmr-stats" id="xmrStats"></div>
+  <div class="panel">
+    <h2>Wykres X (indywidualne wartości) – przepustowość tygodniowa</h2>
+    <svg id="xmrX" viewBox="0 0 900 320"></svg>
+    <p class="hint">Linia środkowa = średnia tygodniowej przepustowości. Linie kontrolne: X̄ ± 2,66 × średni Moving Range (mR̄).</p>
+  </div>
+  <div class="panel">
+    <h2>Wykres mR (ruchomy rozstęp)</h2>
+    <svg id="xmrMR" viewBox="0 0 900 260"></svg>
+    <p class="hint">Linia środkowa = mR̄. Linie kontrolne: mR̄ ± 3,27 × mR̄ (dolna granica techniczna ograniczona do 0, bo mR nie może być ujemny).</p>
+  </div>
+  <div class="panel">
+    <h2>Dane tygodniowe (<span id="xmrCount"></span>)</h2>
+    <div class="table-wrap"><table><thead><tr><th>Tydzień od</th><th>Przepustowość</th><th>Moving Range</th><th>Sygnał</th></tr></thead><tbody id="xmrRows"></tbody></table></div>
+  </div>
+</section>
+<aside>
+  <div class="panel">
+    <h2>O wykresie XMR</h2>
+    <p class="hint">Dane z pliku <b>Throughput Daily.xlsx</b> (dzienna przepustowość) zagregowane sumą do tygodni kalendarzowych (poniedziałek–niedziela).</p>
+    <p class="hint">X̄ (centralna) = średnia z wartości tygodniowych.</p>
+    <p class="hint">mR̄ (centralna mR) = średnia z bezwzględnych różnic między kolejnymi tygodniami.</p>
+    <p class="hint">UCL(X) = X̄ + 2,66 × mR̄, LCL(X) = X̄ − 2,66 × mR̄.</p>
+    <p class="hint">UCL(mR) = mR̄ + 3,27 × mR̄, LCL(mR) = mR̄ − 3,27 × mR̄ (ucięta do 0).</p>
+    <p class="hint">Punkty poza granicami kontrolnymi oznaczają sygnał specjalnej przyczyny zmienności (nie szum procesu).</p>
+  </div>
+  <div class="panel">
+    <h2>Eksport</h2>
+    <button id="xmrExport">Eksport CSV (tygodnie)</button>
+  </div>
+</aside>
+</main>
+</div>
 <div id="tip"></div>
 <script>
 const ORIGINAL = [
@@ -153,6 +202,10 @@ const ORIGINAL = [
 ["2025-10-19","S",126],["2025-10-27","M",57],["2025-11-05","L",124],["2025-11-15","M",75],["2025-11-25","M",89],
 ["2025-12-10","S",44]
 ].map(([date,size,lt],i)=>({id:i+1,date,size,lt}));
+
+const THROUGHPUT_DAILY = [
+["2025-01-07",0],["2025-01-08",2],["2025-01-09",10],["2025-01-10",3],["2025-01-11",0],["2025-01-12",0],["2025-01-13",2],["2025-01-14",3],["2025-01-15",7],["2025-01-16",0],["2025-01-17",0],["2025-01-18",0],["2025-01-19",0],["2025-01-20",5],["2025-01-21",2],["2025-01-22",0],["2025-01-23",0],["2025-01-24",0],["2025-01-25",0],["2025-01-26",0],["2025-01-27",1],["2025-01-28",1],["2025-01-29",0],["2025-01-30",5],["2025-01-31",4],["2025-02-01",0],["2025-02-02",0],["2025-02-03",7],["2025-02-04",0],["2025-02-05",2],["2025-02-06",2],["2025-02-07",12],["2025-02-08",0],["2025-02-09",0],["2025-02-10",1],["2025-02-11",0],["2025-02-12",0],["2025-02-13",2],["2025-02-14",12],["2025-02-15",0],["2025-02-16",0],["2025-02-17",1],["2025-02-18",0],["2025-02-19",0],["2025-02-20",3],["2025-02-21",11],["2025-02-22",0],["2025-02-23",0],["2025-02-24",6],["2025-02-25",0],["2025-02-26",0],["2025-02-27",6],["2025-02-28",7],["2025-03-01",0],["2025-03-02",0],["2025-03-03",2],["2025-03-04",0],["2025-03-05",0],["2025-03-06",3],["2025-03-07",5],["2025-03-08",0],["2025-03-09",0],["2025-03-10",1],["2025-03-11",0],["2025-03-12",0],["2025-03-13",9],["2025-03-14",7],["2025-03-15",0],["2025-03-16",0],["2025-03-17",3],["2025-03-18",0],["2025-03-19",0],["2025-03-20",4],["2025-03-21",10],["2025-03-22",0],["2025-03-23",0],["2025-03-24",1],["2025-03-25",0],["2025-03-26",0],["2025-03-27",5],["2025-03-28",1],["2025-03-29",0],["2025-03-30",0],["2025-03-31",2],["2025-04-01",0],["2025-04-02",0],["2025-04-03",2],["2025-04-04",11],["2025-04-05",0],["2025-04-06",0],["2025-04-07",1],["2025-04-08",0],["2025-04-09",0],["2025-04-10",5],["2025-04-11",2],["2025-04-12",0],["2025-04-13",0],["2025-04-14",1],["2025-04-15",0],["2025-04-16",0],["2025-04-17",4],["2025-04-18",7],["2025-04-19",0]
+];
 
 const KEY="leadtimes-dashboard-v1";
 const COLORS={S:"#3fb950",M:"#58a6ff",L:"#f85149"};
@@ -348,6 +401,95 @@ $("calcPeriod").addEventListener("change",e=>{$("calcCustomRange").style.display
 $("calcBtn").onclick=runForecast;
 $("addDate").value=new Date().toISOString().slice(0,10);
 render();
+
+// ---------- XMR (Przepustowość tygodniowa) ----------
+function buildWeeklyThroughput(){
+  const groups=new Map();
+  THROUGHPUT_DAILY.forEach(([date,val])=>{
+    const k=isoWeekStart(t(date));
+    groups.set(k,(groups.get(k)||0)+val);
+  });
+  return [...groups.entries()].sort((a,b)=>a[0]-b[0]).map(([k,v])=>({weekStart:k,value:v}));
+}
+function computeXMR(weekly){
+  const vals=weekly.map(w=>w.value),n=vals.length;
+  const xbar=vals.reduce((a,b)=>a+b,0)/n;
+  const mr=[null];
+  for(let i=1;i<n;i++)mr.push(Math.abs(vals[i]-vals[i-1]));
+  const mrVals=mr.filter(v=>v!=null);
+  const mrbar=mrVals.reduce((a,b)=>a+b,0)/mrVals.length;
+  return{
+    vals,mr,xbar,mrbar,
+    xUCL:xbar+2.66*mrbar,xLCL:xbar-2.66*mrbar,
+    mrUCL:mrbar+3.27*mrbar,mrLCL:Math.max(0,mrbar-3.27*mrbar)
+  };
+}
+function lineChart(svgId,points,{centerLabel,center,ucl,lcl,color,fmtX,fmtVal}){
+  const W=900,H=svgId==="xmrX"?320:260,m={l:52,r:70,t:16,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const n=points.length;
+  const vals=points.map(p=>p.y).filter(v=>v!=null);
+  const ymin=Math.min(0,lcl,...vals)*1.05,ymax=Math.max(ucl,...vals)*1.15||1;
+  const X=i=>m.l+(n<=1?iw/2:i/(n-1)*iw),Y=y=>m.t+ih-(y-ymin)/(ymax-ymin)*ih;
+  let s="";
+  const step=Math.max(1,Math.round((ymax-ymin)/6));
+  for(let y=Math.ceil(ymin/step)*step;y<=ymax;y+=step)
+    s+=`<line class="grid" x1="${m.l}" x2="${W-m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${m.l-8}" y="${Y(y)+4}" text-anchor="end">${fmtVal?fmtVal(y):y}</text>`;
+  const every=n>24?Math.ceil(n/24):1;
+  points.forEach((p,i)=>{if(i%every===0)s+=`<text x="${X(i)}" y="${H-m.b+16}" text-anchor="middle">${fmtX(p.x)}</text>`});
+  s+=`<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${m.t+ih}" y2="${m.t+ih}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t+ih}"/>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(center)}" y2="${Y(center)}" stroke="#8b949e" stroke-width="1.4"/><text x="${W-m.r+4}" y="${Y(center)+4}">${centerLabel}: ${center.toFixed(1)}</text>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(ucl)}" y2="${Y(ucl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(ucl)+4}" style="fill:#ff7b72">UCL: ${ucl.toFixed(1)}</text>`;
+  s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(lcl)}" y2="${Y(lcl)}" stroke="#ff7b72" stroke-width="1.4" stroke-dasharray="6 4"/><text x="${W-m.r+4}" y="${Y(lcl)+4}" style="fill:#ff7b72">LCL: ${lcl.toFixed(1)}</text>`;
+  let path="";
+  points.forEach((p,i)=>{if(p.y==null)return;path+=(path?"L":"M")+X(i)+","+Y(p.y)+" "});
+  s+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>`;
+  points.forEach((p,i)=>{
+    if(p.y==null)return;
+    const out=p.y>ucl||p.y<lcl;
+    s+=`<circle cx="${X(i)}" cy="${Y(p.y)}" r="5" fill="${out?"#ff7b72":color}" stroke="#0d1117" stroke-width="1.5"><title>${fmtX(p.x)}: ${p.y.toFixed(1)}</title></circle>`;
+  });
+  $(svgId).innerHTML=s;
+}
+function renderXMR(){
+  const weekly=buildWeeklyThroughput();
+  const st=computeXMR(weekly);
+  $("xmrStats").innerHTML=[
+    [weekly.length,"tygodni"],
+    [st.xbar.toFixed(1),"X̄ (śr. tygodniowa)"],
+    [st.mrbar.toFixed(1),"mR̄ (śr. moving range)"],
+    [st.xUCL.toFixed(1),"UCL(X)"],
+    [st.xLCL.toFixed(1),"LCL(X)"],
+    [st.mrUCL.toFixed(1),"UCL(mR)"],
+  ].map(([v,l])=>`<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
+  lineChart("xmrX",weekly.map(w=>({x:w.weekStart,y:w.value})),
+    {centerLabel:"X̄",center:st.xbar,ucl:st.xUCL,lcl:st.xLCL,color:"#58a6ff",fmtX:fmtWeek});
+  lineChart("xmrMR",weekly.map((w,i)=>({x:w.weekStart,y:st.mr[i]})),
+    {centerLabel:"mR̄",center:st.mrbar,ucl:st.mrUCL,lcl:st.mrLCL,color:"#d2a8ff",fmtX:fmtWeek});
+  $("xmrCount").textContent=weekly.length;
+  $("xmrRows").innerHTML=weekly.map((w,i)=>{
+    const mrv=st.mr[i];
+    const xOut=w.value>st.xUCL||w.value<st.xLCL;
+    const mrOut=mrv!=null&&(mrv>st.mrUCL||mrv<st.mrLCL);
+    const sig=[xOut?"X poza granicami":"",mrOut?"mR poza granicami":""].filter(Boolean).join(", ")||"–";
+    return `<tr><td>${fmt(new Date(w.weekStart).toISOString().slice(0,10))}</td><td style="${xOut?"color:#ff7b72;font-weight:600":""}">${w.value}</td><td style="${mrOut?"color:#ff7b72;font-weight:600":""}">${mrv==null?"–":mrv}</td><td>${sig}</td></tr>`;
+  }).join("");
+}
+function fmtWeek(ms){const d=new Date(ms);return `${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,"0")}`}
+$("xmrExport").onclick=()=>{
+  const weekly=buildWeeklyThroughput(),st=computeXMR(weekly);
+  const csv="Tydzień od,Przepustowość,Moving Range\n"+weekly.map((w,i)=>`${new Date(w.weekStart).toISOString().slice(0,10)},${w.value},${st.mr[i]==null?"":st.mr[i]}`).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="throughput-weekly-xmr.csv";a.click();
+};
+function showTab(tab){
+  const scatter=tab==="scatter";
+  $("tab-scatter").classList.toggle("active",scatter);
+  $("tab-xmr").classList.toggle("active",!scatter);
+  $("pageTabScatter").classList.toggle("active",scatter);
+  $("pageTabXmr").classList.toggle("active",!scatter);
+}
+$("pageTabScatter").onclick=()=>showTab("scatter");
+$("pageTabXmr").onclick=()=>showTab("xmr");
+renderXMR();
 </script>
 </body>
 </html>
